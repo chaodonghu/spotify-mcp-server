@@ -18,11 +18,8 @@ FAVORITE_ARTISTS = [
     "Lil Tecca",
     "Playboi Carti", 
     "Travis Scott",
-    "Don Toliver",
-    "Lil Uzi Vert",
+    "Gunna",
     "Future",
-    "Metro Boomin",
-    "21 Savage",
     "PlaqueBoyMax",
     "4batz"
 ]
@@ -136,6 +133,8 @@ def search_artist_tracks(process, request_id, artist):
     
     cutoff_date = get_cutoff_date()
     found_tracks = []
+    seen_track_ids = set()  # Track IDs we've already seen
+    seen_track_titles = set()  # Track titles we've already seen (for same artist)
     
     # Search for tracks by this artist (simple search)
     search_queries = [
@@ -164,12 +163,20 @@ def search_artist_tracks(process, request_id, artist):
                 if artist.lower() in track['artist'].lower():
                     # Check if it's a recent release
                     if is_recent_release(track['release_date'], cutoff_date):
-                        # Avoid duplicates
-                        if not any(t['id'] == track['id'] for t in found_tracks):
+                        track_key = f"{track['title'].lower()}-{artist.lower()}"  # Normalize for comparison
+                        
+                        # Avoid duplicates using track ID and track title
+                        if track['id'] not in seen_track_ids and track_key not in seen_track_titles:
                             found_tracks.append(track)
-                            print(f"    ✅ Found recent release: \"{track['title']}\" (Released: {track['release_date']})")
+                            seen_track_ids.add(track['id'])
+                            seen_track_titles.add(track_key)
+                            print(f"    ✅ Found recent release: \"{track['title']}\" (Released: {track['release_date']}) - ID: {track['id']}")
+                        elif track['id'] in seen_track_ids:
+                            print(f"    🔄 Duplicate ID: \"{track['title']}\" (Released: {track['release_date']}) - ID: {track['id']} already seen")
+                        elif track_key in seen_track_titles:
+                            print(f"    🔄 Same song: \"{track['title']}\" (Released: {track['release_date']}) - Different version, skipping")
     
-    return found_tracks[:3], request_id  # Max 3 per artist
+    return found_tracks, request_id  # Return all found tracks
 
 
 def create_weekly_playlist():
@@ -257,6 +264,8 @@ def create_weekly_playlist():
         # 3. Search for recent releases by each artist
         all_tracks = []
         track_ids_to_add = []
+        final_seen_track_ids = set()  # Global deduplication across all artists
+        final_seen_track_titles = set()  # Global track title deduplication
         
         for artist in FAVORITE_ARTISTS:
             print(f"\n🎤 Checking {artist} for tracks released in the last 7 days...")
@@ -264,11 +273,26 @@ def create_weekly_playlist():
             tracks, request_id = search_artist_tracks(process, request_id, artist)
             
             if tracks:
+                artist_added_count = 0
                 print(f"  ✅ Found {len(tracks)} recent track(s):")
                 for track in tracks:
-                    print(f"     📅 \"{track['title']}\" (Released: {track['release_date']})")
-                    all_tracks.append(track)
-                    track_ids_to_add.append(track['id'])
+                    track_key = f"{track['title'].lower()}"  # Just title for global dedup
+                    
+                    # Final deduplication check across all artists
+                    if track['id'] not in final_seen_track_ids and track_key not in final_seen_track_titles:
+                        print(f"     📅 \"{track['title']}\" (Released: {track['release_date']}) - ID: {track['id']}")
+                        all_tracks.append(track)
+                        track_ids_to_add.append(track['id'])
+                        final_seen_track_ids.add(track['id'])
+                        final_seen_track_titles.add(track_key)
+                        artist_added_count += 1
+                    elif track['id'] in final_seen_track_ids:
+                        print(f"     🔄 \"{track['title']}\" (Released: {track['release_date']}) - ID: {track['id']} - Already added")
+                    elif track_key in final_seen_track_titles:
+                        print(f"     🔄 \"{track['title']}\" (Released: {track['release_date']}) - Same song already added by different artist")
+                
+                if artist_added_count == 0:
+                    print(f"  ⚠️  All tracks were duplicates of previously added songs")
             else:
                 print(f"  ❌ No tracks from the last 7 days found for {artist}")
         
@@ -337,7 +361,6 @@ def setup_automation_instructions():
     print("• Uses actual Spotify release dates (not text matching)")
     print("• Searches for all tracks by your favorite artists")
     print("• Filters tracks released in the last 7 days")
-    print("• Max 3 tracks per artist to keep playlist manageable")
     print(f"\nManual run: python3 {script_path.name}")
 
 
