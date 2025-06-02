@@ -55,9 +55,10 @@ const searchSpotify: tool<{
           .map((track, i) => {
             const artists = track.artists.map((a) => a.name).join(', ');
             const duration = formatDuration(track.duration_ms);
+            const releaseDate = track.album.release_date || 'Unknown';
             return `${i + 1}. "${
               track.name
-            }" by ${artists} (${duration}) - ID: ${track.id}`;
+            }" by ${artists} (${duration}) - Released: ${releaseDate} - ID: ${track.id}`;
           })
           .join('\n');
       } else if (type === 'album' && results.albums) {
